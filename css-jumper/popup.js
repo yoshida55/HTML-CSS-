@@ -257,35 +257,48 @@ document.addEventListener("DOMContentLoaded", function() {
       var tabWindowId = tabs[0].windowId;
       var tabId = tabs[0].id;
       
-      chrome.tabs.sendMessage(tabId, { action: "getViewportInfo" }, function(response) {
-        if (chrome.runtime.lastError || !response) {
-          var fallbackWindowWidth = targetViewportWidth + 87;
-          chrome.windows.update(tabWindowId, { width: fallbackWindowWidth }, function() {
-            setTimeout(function() {
-              chrome.tabs.sendMessage(tabId, { action: "toggleSpacingDisplay" });
-              showStatus("✓ ビューポート幅 " + targetViewportWidth + "px で距離表示", "success");
-            }, 300);
-          });
-          return;
-        }
-        
-        chrome.windows.get(tabWindowId, function(win) {
-          var chromeWidth = win.width - response.viewportWidth;
-          var targetWindowWidth = targetViewportWidth + chromeWidth;
+      function resizeToTarget(attempt) {
+        chrome.tabs.sendMessage(tabId, { action: "getViewportInfo" }, function(response) {
+          if (chrome.runtime.lastError || !response) {
+            var fallbackWindowWidth = targetViewportWidth + 87;
+            chrome.windows.update(tabWindowId, { width: fallbackWindowWidth }, function() {
+              setTimeout(function() {
+                chrome.tabs.sendMessage(tabId, { action: "toggleSpacingDisplay" });
+                showStatus("✓ ビューポート幅 " + targetViewportWidth + "px で距離表示", "success");
+              }, 300);
+            });
+            return;
+          }
           
-          chrome.windows.update(tabWindowId, { width: targetWindowWidth }, function() {
-            setTimeout(function() {
-              chrome.tabs.sendMessage(tabId, { action: "toggleSpacingDisplay" }, function() {
-                if (chrome.runtime.lastError) {
-                  showStatus("⚠️ ページをリロードしてください（F5）", "error");
-                } else {
-                  showStatus("✓ ビューポート幅 " + targetViewportWidth + "px で距離表示", "success");
-                }
-              });
-            }, 300);
+          var currentViewport = response.viewportWidth;
+          if (Math.abs(currentViewport - targetViewportWidth) < 5) {
+            chrome.tabs.sendMessage(tabId, { action: "toggleSpacingDisplay" });
+            showStatus("✓ ビューポート幅 " + targetViewportWidth + "px で距離表示", "success");
+            return;
+          }
+          
+          chrome.windows.get(tabWindowId, function(win) {
+            var chromeWidth = win.width - currentViewport;
+            var targetWindowWidth = targetViewportWidth + chromeWidth;
+            
+            chrome.windows.update(tabWindowId, { width: targetWindowWidth }, function() {
+              setTimeout(function() {
+                chrome.tabs.sendMessage(tabId, { action: "getViewportInfo" }, function(resp2) {
+                  var newViewport = resp2 ? resp2.viewportWidth : targetViewportWidth;
+                  if (Math.abs(newViewport - targetViewportWidth) > 5 && attempt < 2) {
+                    resizeToTarget(attempt + 1);
+                  } else {
+                    chrome.tabs.sendMessage(tabId, { action: "toggleSpacingDisplay" });
+                    showStatus("✓ ビューポート幅 " + targetViewportWidth + "px で距離表示", "success");
+                  }
+                });
+              }, 200);
+            });
           });
         });
-      });
+      }
+      
+      resizeToTarget(1);
     });
   });
   
@@ -318,35 +331,48 @@ document.addEventListener("DOMContentLoaded", function() {
       var tabWindowId = tabs[0].windowId;
       var tabId = tabs[0].id;
       
-      chrome.tabs.sendMessage(tabId, { action: "getViewportInfo" }, function(response) {
-        if (chrome.runtime.lastError || !response) {
-          var fallbackWindowWidth = targetViewportWidth + 87;
-          chrome.windows.update(tabWindowId, { width: fallbackWindowWidth }, function() {
-            setTimeout(function() {
-              chrome.tabs.sendMessage(tabId, { action: "toggleBothDisplay" });
-              showStatus("✓ ビューポート幅 " + targetViewportWidth + "px でサイズ＋距離表示", "success");
-            }, 300);
-          });
-          return;
-        }
-        
-        chrome.windows.get(tabWindowId, function(win) {
-          var chromeWidth = win.width - response.viewportWidth;
-          var targetWindowWidth = targetViewportWidth + chromeWidth;
+      function resizeToTarget(attempt) {
+        chrome.tabs.sendMessage(tabId, { action: "getViewportInfo" }, function(response) {
+          if (chrome.runtime.lastError || !response) {
+            var fallbackWindowWidth = targetViewportWidth + 87;
+            chrome.windows.update(tabWindowId, { width: fallbackWindowWidth }, function() {
+              setTimeout(function() {
+                chrome.tabs.sendMessage(tabId, { action: "toggleBothDisplay" });
+                showStatus("✓ ビューポート幅 " + targetViewportWidth + "px でサイズ＋距離表示", "success");
+              }, 300);
+            });
+            return;
+          }
           
-          chrome.windows.update(tabWindowId, { width: targetWindowWidth }, function() {
-            setTimeout(function() {
-              chrome.tabs.sendMessage(tabId, { action: "toggleBothDisplay" }, function() {
-                if (chrome.runtime.lastError) {
-                  showStatus("⚠️ ページをリロードしてください（F5）", "error");
-                } else {
-                  showStatus("✓ ビューポート幅 " + targetViewportWidth + "px でサイズ＋距離表示", "success");
-                }
-              });
-            }, 300);
+          var currentViewport = response.viewportWidth;
+          if (Math.abs(currentViewport - targetViewportWidth) < 5) {
+            chrome.tabs.sendMessage(tabId, { action: "toggleBothDisplay" });
+            showStatus("✓ ビューポート幅 " + targetViewportWidth + "px でサイズ＋距離表示", "success");
+            return;
+          }
+          
+          chrome.windows.get(tabWindowId, function(win) {
+            var chromeWidth = win.width - currentViewport;
+            var targetWindowWidth = targetViewportWidth + chromeWidth;
+            
+            chrome.windows.update(tabWindowId, { width: targetWindowWidth }, function() {
+              setTimeout(function() {
+                chrome.tabs.sendMessage(tabId, { action: "getViewportInfo" }, function(resp2) {
+                  var newViewport = resp2 ? resp2.viewportWidth : targetViewportWidth;
+                  if (Math.abs(newViewport - targetViewportWidth) > 5 && attempt < 2) {
+                    resizeToTarget(attempt + 1);
+                  } else {
+                    chrome.tabs.sendMessage(tabId, { action: "toggleBothDisplay" });
+                    showStatus("✓ ビューポート幅 " + targetViewportWidth + "px でサイズ＋距離表示", "success");
+                  }
+                });
+              }, 200);
+            });
           });
         });
-      });
+      }
+      
+      resizeToTarget(1);
     });
   });
 
