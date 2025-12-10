@@ -105,6 +105,23 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
     sendResponse({ shown: true });
   }
   
+  if (message.action === "getCssLinks") {
+    // ページ内のCSSリンクを取得
+    var links = document.querySelectorAll('link[rel="stylesheet"]');
+    var cssLinks = [];
+    
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].href;
+      // 外部CDN等は除外（ローカルのみ）
+      if (href && (href.includes('127.0.0.1') || href.includes('localhost'))) {
+        cssLinks.push(href);
+      }
+    }
+    
+    console.log("CSS Jumper: CSSリンク検出", cssLinks);
+    sendResponse({ cssLinks: cssLinks });
+  }
+  
   return true;
 });
 
@@ -217,13 +234,18 @@ function showSizeOverlay() {
       var width = elemWidth;
       var height = elemHeight;
       
+      // フォントサイズを取得
+      var computedStyle = window.getComputedStyle(elem);
+      var fontSize = Math.round(parseFloat(computedStyle.fontSize));
+      
       // 幅がビューポートを超えている場合は警告色
       var bgColor = "rgba(33, 150, 243, 0.9)";
       if (width > viewportWidth) {
         bgColor = "rgba(255, 152, 0, 0.9)"; // オレンジ（警告）
       }
       
-      label.textContent = width + "×" + height;
+      // サイズとフォントサイズを表示
+      label.textContent = width + "×" + height + " f" + fontSize;
       label.style.cssText = 
         "position: absolute;" +
         "left: " + (rect.left + window.scrollX) + "px;" +
@@ -353,7 +375,10 @@ function showSizeOverlayOnly() {
     var label = document.createElement("div");
     label.className = "css-jumper-size-overlay";
     var bgColor = elemWidth > viewportWidth ? "rgba(255, 152, 0, 0.9)" : "rgba(33, 150, 243, 0.9)";
-    label.textContent = elemWidth + "×" + elemHeight;
+    // フォントサイズを取得
+    var computedStyle = window.getComputedStyle(elem);
+    var fontSize = Math.round(parseFloat(computedStyle.fontSize));
+    label.textContent = elemWidth + "×" + elemHeight + " f" + fontSize;
     label.style.cssText = 
       "position: absolute;" +
       "left: " + (rect.left + window.scrollX) + "px;" +

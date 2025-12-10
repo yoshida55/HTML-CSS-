@@ -1,6 +1,7 @@
 document.addEventListener("DOMContentLoaded", function() {
   var projectPathInput = document.getElementById("projectPath");
   var selectFilesBtn = document.getElementById("selectFilesBtn");
+  var autoDetectBtn = document.getElementById("autoDetectBtn");
   var cssFileInput = document.getElementById("cssFileInput");
   var reloadBtn = document.getElementById("reloadBtn");
   var clearBtn = document.getElementById("clearBtn");
@@ -134,6 +135,91 @@ document.addEventListener("DOMContentLoaded", function() {
     });
   }
 
+  // CSS自動検出ボタン
+  autoDetectBtn.addEventListener("click", function() {
+    var projectPath = projectPathInput.value.trim();
+    
+    if (!projectPath) {
+      showStatus("⚠️ 先にプロジェクトパスを入力してください", "error");
+      projectPathInput.focus();
+      return;
+    }
+    
+    showStatus("🔍 CSSファイルを検出中...", "info");
+    
+    // アクティブタブからCSSリンクを取得
+    chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+      if (!tabs || !tabs[0]) {
+        showStatus("⚠️ アクティブなタブが見つかりません", "error");
+        return;
+      }
+      
+      chrome.tabs.sendMessage(tabs[0].id, { action: "getCssLinks" }, function(response) {
+        if (chrome.runtime.lastError || !response || !response.cssLinks) {
+          showStatus("⚠️ ページをリロードしてください（F5）", "error");
+          return;
+        }
+        
+        var cssLinks = response.cssLinks;
+        
+        if (cssLinks.length === 0) {
+          showStatus("⚠️ CSSファイルが見つかりません（Live Server必須）", "error");
+          return;
+        }
+        
+        // 各CSSファイルをfetchで読み込み
+        var cssFiles = [];
+        var loadedCount = 0;
+        var errorCount = 0;
+        
+        for (var i = 0; i < cssLinks.length; i++) {
+          (function(url) {
+            fetch(url)
+              .then(function(res) { return res.text(); })
+              .then(function(content) {
+                // URLから相対パスを抽出
+                var urlObj = new URL(url);
+                var pathname = urlObj.pathname;
+                // 先頭の/を削除
+                var relativePath = pathname.replace(/^\//, '');
+                var fileName = relativePath.split('/').pop();
+                
+                // 除外ファイルをスキップ
+                var excludeFiles = ["reset.css", "normalize.css", "sanitize.css"];
+                var isExcluded = false;
+                for (var e = 0; e < excludeFiles.length; e++) {
+                  if (fileName.toLowerCase() === excludeFiles[e].toLowerCase()) {
+                    isExcluded = true;
+                    break;
+                  }
+                }
+                
+                cssFiles.push({
+                  name: fileName,
+                  relativePath: relativePath,
+                  content: content,
+                  lines: content.split('\n').length,
+                  excluded: isExcluded
+                });
+                loadedCount++;
+                
+                if (loadedCount + errorCount === cssLinks.length) {
+                  saveCssFiles(cssFiles, errorCount);
+                }
+              })
+              .catch(function(err) {
+                console.error("CSS Jumper: fetch失敗", url, err);
+                errorCount++;
+                if (loadedCount + errorCount === cssLinks.length) {
+                  saveCssFiles(cssFiles, errorCount);
+                }
+              });
+          })(cssLinks[i]);
+        }
+      });
+    });
+  });
+
   // 再読込ボタン
   reloadBtn.addEventListener("click", function() {
     var projectPath = projectPathInput.value.trim();
@@ -176,11 +262,10 @@ document.addEventListener("DOMContentLoaded", function() {
       var tabWindowId = tabs[0].windowId;
       var tabId = tabs[0].id;
       
-      // リサイズ関数（再帰で最大2回試行）
+      // リサイズ関数（再帰で最大3回試行）
       function resizeToTarget(attempt) {
         chrome.tabs.sendMessage(tabId, { action: "getViewportInfo" }, function(response) {
           if (chrome.runtime.lastError || !response) {
-            // フォールバック
             var fallbackWindowWidth = targetViewportWidth + 87;
             chrome.windows.update(tabWindowId, { width: fallbackWindowWidth }, function() {
               setTimeout(function() {
@@ -192,33 +277,34 @@ document.addEventListener("DOMContentLoaded", function() {
           }
           
           var currentViewport = response.viewportWidth;
+          var diff = currentViewport - targetViewportWidth;
           
           // 既に目標幅なら表示のみ
-          if (Math.abs(currentViewport - targetViewportWidth) < 5) {
+          if (diff === 0) {
             chrome.tabs.sendMessage(tabId, { action: "toggleSizeDisplay" });
             showStatus("✓ ビューポート幅 " + targetViewportWidth + "px でサイズ表示", "success");
             return;
           }
           
           chrome.windows.get(tabWindowId, function(win) {
-            var chromeWidth = win.width - currentViewport;
-            var targetWindowWidth = targetViewportWidth + chromeWidth;
+            // 差分を直接補正
+            var targetWindowWidth = win.width - diff;
             
             chrome.windows.update(tabWindowId, { width: targetWindowWidth }, function() {
               setTimeout(function() {
-                // リサイズ後に確認
                 chrome.tabs.sendMessage(tabId, { action: "getViewportInfo" }, function(resp2) {
                   var newViewport = resp2 ? resp2.viewportWidth : targetViewportWidth;
+                  var newDiff = Math.abs(newViewport - targetViewportWidth);
                   
-                  // 目標との差が大きく、まだ試行回数が残っていれば再調整
-                  if (Math.abs(newViewport - targetViewportWidth) > 5 && attempt < 2) {
+                  // 目標と一致しない場合、まだ試行回数が残っていれば再調整
+                  if (newDiff > 0 && attempt < 5) {
                     resizeToTarget(attempt + 1);
                   } else {
                     chrome.tabs.sendMessage(tabId, { action: "toggleSizeDisplay" });
                     showStatus("✓ ビューポート幅 " + targetViewportWidth + "px でサイズ表示", "success");
                   }
                 });
-              }, 200);
+              }, 300);
             });
           });
         });
@@ -271,28 +357,30 @@ document.addEventListener("DOMContentLoaded", function() {
           }
           
           var currentViewport = response.viewportWidth;
-          if (Math.abs(currentViewport - targetViewportWidth) < 5) {
+          var diff = currentViewport - targetViewportWidth;
+          
+          if (diff === 0) {
             chrome.tabs.sendMessage(tabId, { action: "toggleSpacingDisplay" });
             showStatus("✓ ビューポート幅 " + targetViewportWidth + "px で距離表示", "success");
             return;
           }
           
           chrome.windows.get(tabWindowId, function(win) {
-            var chromeWidth = win.width - currentViewport;
-            var targetWindowWidth = targetViewportWidth + chromeWidth;
+            var targetWindowWidth = win.width - diff;
             
             chrome.windows.update(tabWindowId, { width: targetWindowWidth }, function() {
               setTimeout(function() {
                 chrome.tabs.sendMessage(tabId, { action: "getViewportInfo" }, function(resp2) {
                   var newViewport = resp2 ? resp2.viewportWidth : targetViewportWidth;
-                  if (Math.abs(newViewport - targetViewportWidth) > 5 && attempt < 2) {
+                  var newDiff = Math.abs(newViewport - targetViewportWidth);
+                  if (newDiff > 0 && attempt < 5) {
                     resizeToTarget(attempt + 1);
                   } else {
                     chrome.tabs.sendMessage(tabId, { action: "toggleSpacingDisplay" });
                     showStatus("✓ ビューポート幅 " + targetViewportWidth + "px で距離表示", "success");
                   }
                 });
-              }, 200);
+              }, 300);
             });
           });
         });
@@ -345,28 +433,30 @@ document.addEventListener("DOMContentLoaded", function() {
           }
           
           var currentViewport = response.viewportWidth;
-          if (Math.abs(currentViewport - targetViewportWidth) < 5) {
+          var diff = currentViewport - targetViewportWidth;
+          
+          if (diff === 0) {
             chrome.tabs.sendMessage(tabId, { action: "toggleBothDisplay" });
             showStatus("✓ ビューポート幅 " + targetViewportWidth + "px でサイズ＋距離表示", "success");
             return;
           }
           
           chrome.windows.get(tabWindowId, function(win) {
-            var chromeWidth = win.width - currentViewport;
-            var targetWindowWidth = targetViewportWidth + chromeWidth;
+            var targetWindowWidth = win.width - diff;
             
             chrome.windows.update(tabWindowId, { width: targetWindowWidth }, function() {
               setTimeout(function() {
                 chrome.tabs.sendMessage(tabId, { action: "getViewportInfo" }, function(resp2) {
                   var newViewport = resp2 ? resp2.viewportWidth : targetViewportWidth;
-                  if (Math.abs(newViewport - targetViewportWidth) > 5 && attempt < 2) {
+                  var newDiff = Math.abs(newViewport - targetViewportWidth);
+                  if (newDiff > 0 && attempt < 5) {
                     resizeToTarget(attempt + 1);
                   } else {
                     chrome.tabs.sendMessage(tabId, { action: "toggleBothDisplay" });
                     showStatus("✓ ビューポート幅 " + targetViewportWidth + "px でサイズ＋距離表示", "success");
                   }
                 });
-              }, 200);
+              }, 300);
             });
           });
         });

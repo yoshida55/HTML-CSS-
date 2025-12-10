@@ -26,7 +26,12 @@
 
       <!-- Step 2: CSSファイル選択 -->
       <div class="form-group">
-        <label>② CSSファイルを選択（複数可）</label>
+        <label>② CSSファイル</label>
+        <div class="button-group" style="margin-bottom: 8px">
+          <button id="autoDetectBtn" class="btn btn-success btn-full">
+            🔍 ページから自動検出
+          </button>
+        </div>
         <input
           type="file"
           id="cssFileInput"
@@ -34,10 +39,12 @@
           accept=".css"
           style="display: none"
         />
-        <button id="selectFilesBtn" class="btn btn-primary btn-full">
-          📄 CSSファイルを選択
+        <button id="selectFilesBtn" class="btn btn-secondary btn-full">
+          📄 手動でファイル選択
         </button>
-        <p class="hint">プロジェクト内のCSSファイルを全て選択してください</p>
+        <p class="hint">
+          Live Serverで開いているページから自動検出、または手動選択
+        </p>
       </div>
 
       <div id="cssFilesList" class="css-files-list"></div>
