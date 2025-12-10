@@ -39,17 +39,15 @@ chrome.contextMenus.onClicked.addListener(function(info, tab) {
     // 保存されたビューポート幅を取得してウィンドウをリサイズ
     chrome.storage.local.get(["targetViewportWidth"], function(result) {
       var targetWidth = result.targetViewportWidth || 1280;
-      var scrollbarWidth = 17; // デフォルトのスクロールバー幅
       
-      chrome.windows.update(tab.windowId, { width: targetWidth + scrollbarWidth }, function() {
-        setTimeout(function() {
-          chrome.tabs.sendMessage(tab.id, { action: "toggleSizeDisplay" }, function(response) {
-            if (chrome.runtime.lastError) {
-              console.error("CSS Jumper: toggleSizeDisplay送信エラー", chrome.runtime.lastError);
-              notifyUserToTab(tab.id, "ページをリロードしてください（F5）", "error");
-            }
-          });
-        }, 300);
+      // 精密なリサイズ（リトライあり）
+      resizeToTargetViewport(tab.id, tab.windowId, targetWidth, 1, function() {
+        chrome.tabs.sendMessage(tab.id, { action: "toggleSizeDisplay" }, function(response) {
+          if (chrome.runtime.lastError) {
+            console.error("CSS Jumper: toggleSizeDisplay送信エラー", chrome.runtime.lastError);
+            notifyUserToTab(tab.id, "ページをリロードしてください（F5）", "error");
+          }
+        });
       });
     });
   }
@@ -58,22 +56,63 @@ chrome.contextMenus.onClicked.addListener(function(info, tab) {
     // 保存されたビューポート幅を取得してウィンドウをリサイズ
     chrome.storage.local.get(["targetViewportWidth"], function(result) {
       var targetWidth = result.targetViewportWidth || 1280;
-      var scrollbarWidth = 17;
       
-      chrome.windows.update(tab.windowId, { width: targetWidth + scrollbarWidth }, function() {
-        setTimeout(function() {
-          chrome.tabs.sendMessage(tab.id, { action: "toggleSpacingDisplay" }, function(response) {
-            if (chrome.runtime.lastError) {
-              console.error("CSS Jumper: toggleSpacingDisplay送信エラー", chrome.runtime.lastError);
-              notifyUserToTab(tab.id, "ページをリロードしてください（F5）", "error");
-            }
-          });
-        }, 300);
+      // 精密なリサイズ（リトライあり）
+      resizeToTargetViewport(tab.id, tab.windowId, targetWidth, 1, function() {
+        chrome.tabs.sendMessage(tab.id, { action: "toggleSpacingDisplay" }, function(response) {
+          if (chrome.runtime.lastError) {
+            console.error("CSS Jumper: toggleSpacingDisplay送信エラー", chrome.runtime.lastError);
+            notifyUserToTab(tab.id, "ページをリロードしてください（F5）", "error");
+          }
+        });
       });
     });
   }
 });
 
+// 精密なビューポートリサイズ関数（リトライあり、許容誤差0px）
+function resizeToTargetViewport(tabId, windowId, targetViewportWidth, attempt, callback) {
+  chrome.tabs.sendMessage(tabId, { action: "getViewportInfo" }, function(response) {
+    if (chrome.runtime.lastError || !response) {
+      // フォールバック：推定値でリサイズ
+      var fallbackWindowWidth = targetViewportWidth + 87;
+      chrome.windows.update(windowId, { width: fallbackWindowWidth }, function() {
+        setTimeout(callback, 300);
+      });
+      return;
+    }
+    
+    var currentViewport = response.viewportWidth;
+    var diff = currentViewport - targetViewportWidth;
+    
+    // ピッタリ一致したらコールバック
+    if (diff === 0) {
+      callback();
+      return;
+    }
+    
+    // ウィンドウサイズを調整
+    chrome.windows.get(windowId, function(win) {
+      var targetWindowWidth = win.width - diff;
+      
+      chrome.windows.update(windowId, { width: targetWindowWidth }, function() {
+        setTimeout(function() {
+          chrome.tabs.sendMessage(tabId, { action: "getViewportInfo" }, function(resp2) {
+            var newViewport = resp2 ? resp2.viewportWidth : targetViewportWidth;
+            var newDiff = Math.abs(newViewport - targetViewportWidth);
+            
+            // まだずれていて、リトライ回数が残っていれば再試行
+            if (newDiff > 0 && attempt < 5) {
+              resizeToTargetViewport(tabId, windowId, targetViewportWidth, attempt + 1, callback);
+            } else {
+              callback();
+            }
+          });
+        }, 300);
+      });
+    });
+  });
+}
 // content.jsからのメッセージを受信
 chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   console.log("CSS Jumper: メッセージ受信", message);

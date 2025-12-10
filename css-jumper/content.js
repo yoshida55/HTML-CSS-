@@ -2,6 +2,10 @@
 var lastRightClickedElement = null;
 var sizeOverlayVisible = false;
 
+// Ctrl+クリック距離測定用
+var distanceMeasureFirstElement = null;
+var distanceMeasureHighlight = null;
+
 console.log("CSS Jumper: content.js読み込み完了");
 
 // 右クリック時に要素を記録
@@ -44,6 +48,146 @@ document.addEventListener("click", function(event) {
     });
   }
 }, true);
+
+// Ctrl+クリックで要素からビューポート端までの距離を表示
+document.addEventListener("click", function(event) {
+  if (event.ctrlKey && !event.altKey && !event.shiftKey) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    var clickedElement = event.target;
+    
+    // CSS Jumperのオーバーレイは除外
+    if (clickedElement.classList.contains("css-jumper-size-overlay") ||
+        clickedElement.classList.contains("css-jumper-spacing-overlay") ||
+        clickedElement.classList.contains("css-jumper-distance-overlay")) {
+      return;
+    }
+    
+    // 既存の距離表示を削除
+    var existingOverlays = document.querySelectorAll(".css-jumper-distance-overlay");
+    for (var i = 0; i < existingOverlays.length; i++) {
+      existingOverlays[i].remove();
+    }
+    
+    var rect = clickedElement.getBoundingClientRect();
+    var viewportWidth = window.innerWidth;
+    var viewportHeight = window.innerHeight;
+    
+    // 各方向の距離を計算
+    var distanceLeft = Math.round(rect.left);
+    var distanceRight = Math.round(viewportWidth - rect.right);
+    var distanceTop = Math.round(rect.top);
+    var distanceBottom = Math.round(viewportHeight - rect.bottom);
+    
+    // 要素をハイライト
+    var highlight = document.createElement("div");
+    highlight.className = "css-jumper-distance-overlay";
+    highlight.style.cssText = 
+      "position: fixed;" +
+      "left: " + rect.left + "px;" +
+      "top: " + rect.top + "px;" +
+      "width: " + rect.width + "px;" +
+      "height: " + rect.height + "px;" +
+      "border: 3px solid #9C27B0;" +
+      "background: rgba(156, 39, 176, 0.1);" +
+      "z-index: 999998;" +
+      "pointer-events: none;" +
+      "box-sizing: border-box;";
+    document.body.appendChild(highlight);
+    
+    // 左端までの距離ライン
+    if (distanceLeft > 5) {
+      var leftLine = document.createElement("div");
+      leftLine.className = "css-jumper-distance-overlay";
+      leftLine.style.cssText = 
+        "position: fixed;" +
+        "left: 0;" +
+        "top: " + (rect.top + rect.height / 2) + "px;" +
+        "width: " + rect.left + "px;" +
+        "height: 2px;" +
+        "background: #E91E63;" +
+        "z-index: 999999;";
+      document.body.appendChild(leftLine);
+      
+      var leftLabel = document.createElement("div");
+      leftLabel.className = "css-jumper-distance-overlay";
+      leftLabel.textContent = "←" + distanceLeft + "px";
+      leftLabel.style.cssText = 
+        "position: fixed;" +
+        "left: " + (rect.left / 2 - 25) + "px;" +
+        "top: " + (rect.top + rect.height / 2 - 20) + "px;" +
+        "background: #E91E63;" +
+        "color: white;" +
+        "padding: 4px 8px;" +
+        "font-size: 12px;" +
+        "font-family: monospace;" +
+        "border-radius: 4px;" +
+        "z-index: 999999;";
+      document.body.appendChild(leftLabel);
+    }
+    
+    // 右端までの距離ライン
+    if (distanceRight > 5) {
+      var rightLine = document.createElement("div");
+      rightLine.className = "css-jumper-distance-overlay";
+      rightLine.style.cssText = 
+        "position: fixed;" +
+        "left: " + rect.right + "px;" +
+        "top: " + (rect.top + rect.height / 2) + "px;" +
+        "width: " + (viewportWidth - rect.right) + "px;" +
+        "height: 2px;" +
+        "background: #E91E63;" +
+        "z-index: 999999;";
+      document.body.appendChild(rightLine);
+      
+      var rightLabel = document.createElement("div");
+      rightLabel.className = "css-jumper-distance-overlay";
+      rightLabel.textContent = distanceRight + "px→";
+      rightLabel.style.cssText = 
+        "position: fixed;" +
+        "left: " + (rect.right + (viewportWidth - rect.right) / 2 - 25) + "px;" +
+        "top: " + (rect.top + rect.height / 2 - 20) + "px;" +
+        "background: #E91E63;" +
+        "color: white;" +
+        "padding: 4px 8px;" +
+        "font-size: 12px;" +
+        "font-family: monospace;" +
+        "border-radius: 4px;" +
+        "z-index: 999999;";
+      document.body.appendChild(rightLabel);
+    }
+    
+    // クラス名を表示
+    var className = clickedElement.className;
+    if (typeof className === "object" && className.baseVal) {
+      className = className.baseVal;
+    }
+    var displayName = className ? className.split(" ")[0] : clickedElement.tagName.toLowerCase();
+    
+    showNotification("要素: ." + displayName + " | 左: " + distanceLeft + "px, 右: " + distanceRight + "px", "success");
+    
+    // 5秒後に自動削除
+    setTimeout(function() {
+      var overlays = document.querySelectorAll(".css-jumper-distance-overlay");
+      for (var i = 0; i < overlays.length; i++) {
+        overlays[i].remove();
+      }
+    }, 5000);
+  }
+}, true);
+
+// Escキーで選択をキャンセル
+document.addEventListener("keydown", function(event) {
+  if (event.key === "Escape" && distanceMeasureFirstElement) {
+    if (distanceMeasureHighlight) {
+      distanceMeasureHighlight.remove();
+      distanceMeasureHighlight = null;
+    }
+    distanceMeasureFirstElement = null;
+    showNotification("距離測定をキャンセル", "info");
+  }
+});
 
 // background.jsからのメッセージを受信
 chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
@@ -124,6 +268,107 @@ chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
   
   return true;
 });
+
+// スクロールバー幅を取得
+function getScrollbarWidth() {
+  return window.innerWidth - document.documentElement.clientWidth;
+}
+
+// デザイン基準（1rem = 10px）でmargin値を変換
+function convertToDesignBasis(pixelValue) {
+  // ブラウザの実際のhtml font-sizeを取得
+  var htmlFontSize = parseFloat(window.getComputedStyle(document.documentElement).fontSize);
+  
+  // rem値を逆算
+  var remValue = pixelValue / htmlFontSize;
+  
+  // デザイン基準（1rem = 10px）で再計算
+  var designBasisPx = remValue * 10;
+  
+  return Math.round(designBasisPx);
+}
+
+// 配置方法に基づいてスクロールバー補正値を計算
+function getScrollbarCorrection(element) {
+  var scrollbarWidth = getScrollbarWidth();
+  
+  // スクロールバーがなければ補正不要
+  // デバッグ用：一時的に補正を無効化
+  if (true || scrollbarWidth <= 0) {
+    return { left: 0, right: 0 };
+  }
+  
+  var style = window.getComputedStyle(element);
+  var parent = element.parentElement;
+  var parentStyle = parent ? window.getComputedStyle(parent) : null;
+  
+  // 要素の位置から中央寄せかどうかを判定
+  var rect = element.getBoundingClientRect();
+  var parentRect = parent ? parent.getBoundingClientRect() : { left: 0, right: window.innerWidth };
+  
+  // 親要素に対する左右の余白を計算
+  var leftSpace = rect.left - parentRect.left;
+  var rightSpace = parentRect.right - rect.right;
+  
+  // 左右の余白がほぼ等しい場合は中央寄せと判定（許容誤差10px）
+  if (Math.abs(leftSpace - rightSpace) <= 10) {
+    return {
+      left: scrollbarWidth / 2,
+      right: scrollbarWidth / 2
+    };
+  }
+  
+  // flexboxの中央寄せ判定
+  if (parentStyle && 
+      (parentStyle.display === 'flex' || parentStyle.display === 'inline-flex') &&
+      parentStyle.justifyContent === 'center') {
+    return {
+      left: scrollbarWidth / 2,
+      right: scrollbarWidth / 2
+    };
+  }
+  
+  // gridの中央寄せ判定
+  if (parentStyle && 
+      (parentStyle.display === 'grid' || parentStyle.display === 'inline-grid') &&
+      parentStyle.justifyContent === 'center') {
+    return {
+      left: scrollbarWidth / 2,
+      right: scrollbarWidth / 2
+    };
+  }
+  
+  // position: absoluteの判定
+  if (style.position === 'absolute' || style.position === 'fixed') {
+    var hasLeft = style.left !== 'auto';
+    var hasRight = style.right !== 'auto';
+    
+    if (hasLeft && hasRight) {
+      // 両方指定 → 中央的な配置
+      return { left: scrollbarWidth / 2, right: scrollbarWidth / 2 };
+    } else if (hasLeft) {
+      // left基準 → 左は変わらない、右が縮む
+      return { left: 0, right: scrollbarWidth };
+    } else if (hasRight) {
+      // right基準 → 右は変わらない、左が縮む
+      return { left: scrollbarWidth, right: 0 };
+    }
+  }
+  
+  // 右寄りの場合（右余白が左余白より小さい）
+  if (rightSpace < leftSpace - 10) {
+    return {
+      left: scrollbarWidth,
+      right: 0
+    };
+  }
+  
+  // 左寄せ（デフォルト）
+  return {
+    left: 0,
+    right: scrollbarWidth
+  };
+}
 
 // サイズ表示をトグル
 function toggleSizeDisplay() {
@@ -427,6 +672,15 @@ function showSpacingOverlayOnly() {
     var marginBottom = Math.round(parseFloat(style.marginBottom)) || 0;
     var marginRight = Math.round(parseFloat(style.marginRight)) || 0;
     
+    // 中央寄せ（margin: auto）の場合、スクロールバー幅分を補正
+    var scrollbarWidth = getScrollbarWidth();
+    if (scrollbarWidth > 0 && Math.abs(marginLeft - marginRight) < 3) {
+      // 左右のmarginがほぼ同じ = margin: auto で中央寄せ
+      var scrollbarCorrection = Math.floor(scrollbarWidth / 2);
+      marginLeft += scrollbarCorrection;
+      marginRight += scrollbarCorrection;
+    }
+    
     // margin表示（ピンク/オレンジ）
     if (marginTop >= 5) {
       var mTop = document.createElement("div");
@@ -531,12 +785,21 @@ function showSpacingOverlay() {
       }
       processedElements.push(key);
       
-      // marginを取得（parseFloatでより正確に）
+      // marginを取得
       var style = window.getComputedStyle(elem);
       var marginTop = Math.round(parseFloat(style.marginTop)) || 0;
       var marginLeft = Math.round(parseFloat(style.marginLeft)) || 0;
       var marginBottom = Math.round(parseFloat(style.marginBottom)) || 0;
       var marginRight = Math.round(parseFloat(style.marginRight)) || 0;
+      
+      // 中央寄せ（margin: auto）の場合、スクロールバー幅分を補正
+      var scrollbarWidth = getScrollbarWidth();
+      if (scrollbarWidth > 0 && Math.abs(marginLeft - marginRight) < 3) {
+        // 左右のmarginがほぼ同じ = margin: auto で中央寄せ
+        var scrollbarCorrection = Math.floor(scrollbarWidth / 2);
+        marginLeft += scrollbarCorrection;
+        marginRight += scrollbarCorrection;
+      }
       
       // paddingを取得
       var paddingTop = Math.round(parseFloat(style.paddingTop)) || 0;
@@ -646,14 +909,14 @@ function showSpacingOverlay() {
         document.body.appendChild(topLabel);
       }
       
-      // 左方向のmarginを表示（5px以上の場合のみ）
+      // 左方向のmarginを表示（5px以上）
       if (marginLeft >= 5) {
         var leftLabel = document.createElement("div");
         leftLabel.className = "css-jumper-spacing-overlay";
         leftLabel.textContent = "←" + marginLeft;
         leftLabel.style.cssText = 
           "position: absolute;" +
-          "left: " + (rect.left + window.scrollX - 35) + "px;" +
+          "left: " + (rect.left + window.scrollX - 40) + "px;" +
           "top: " + (rect.top + window.scrollY + rect.height / 2 - 8) + "px;" +
           "background: rgba(255, 152, 0, 0.9);" +
           "color: white;" +
@@ -688,7 +951,7 @@ function showSpacingOverlay() {
         document.body.appendChild(bottomLabel);
       }
       
-      // 右方向のmarginを表示（5px以上の場合のみ）
+      // 右方向のmarginを表示（5px以上）
       if (marginRight >= 5) {
         var rightLabel = document.createElement("div");
         rightLabel.className = "css-jumper-spacing-overlay";
